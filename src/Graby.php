@@ -365,10 +365,10 @@ class Graby
 
         // Deal with multi-page articles
         $isMultiPage = (!$isSinglePage && $extractResult && null !== $this->extractor->getNextPageUrl());
+        $multiPageUrls = [$effectiveUrl];
         if ($this->config['multipage'] && $isMultiPage) {
             $this->logger->info('Attempting to process multi-page article');
             // store first page to avoid parsing it again (previous url content is in `$contentBlock`)
-            $multiPageUrls = [$effectiveUrl];
             $multiPageContent = [];
 
             while ($nextPageUrl = $this->extractor->getNextPageUrl()) {
@@ -429,7 +429,7 @@ class Graby
                 $contentBlock->appendChild($page);
             }
 
-            unset($multiPageUrls, $multiPageContent, $nextPageUrl, $page);
+            unset($multiPageContent, $nextPageUrl, $page);
         }
 
         $res = [
@@ -443,6 +443,7 @@ class Graby
             'image' => $extractedImage,
             'native_ad' => $this->extractor->isNativeAd(),
             'headers' => $response['headers'],
+            'multi_page_urls' => $multiPageUrls,
         ];
 
         // if we failed to extract content...
