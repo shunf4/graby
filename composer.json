@@ -18,7 +18,7 @@
         "ext-curl": "*",
         "ext-tidy": "*",
         "j0k3r/php-readability": "^1.1",
-        "shunf4/graby-site-config": "dev-fengshun",
+        "shunf4/graby-site-config": "dev-fs-private",
         "simplepie/simplepie": "^1.3.1",
         "fossar/htmlawed": "^1.2.4",
         "symfony/options-resolver": "~2.6|~3.0|~4.0",
