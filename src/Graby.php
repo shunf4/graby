@@ -229,13 +229,13 @@ class Graby
 
         // remove empty text nodes
         foreach ($contentBlock->childNodes as $n) {
-            if (XML_TEXT_NODE === $n->nodeType && '' === trim($n->textContent)) {
+            if (\XML_TEXT_NODE === $n->nodeType && '' === trim($n->textContent)) {
                 $contentBlock->removeChild($n);
             }
         }
 
         // remove nesting: <div><div><div><p>test</p></div></div></div> = <p>test</p>
-        while (1 === $contentBlock->childNodes->length && XML_ELEMENT_NODE === $contentBlock->firstChild->nodeType) {
+        while (1 === $contentBlock->childNodes->length && \XML_ELEMENT_NODE === $contentBlock->firstChild->nodeType) {
             // only follow these tag names
             if (!\in_array(strtolower($contentBlock->tagName), ['div', 'article', 'section', 'header', 'footer'], true)) {
                 break;
@@ -305,14 +305,19 @@ class Graby
 
         $this->logger->debug('Fetched HTML', ['html' => $html]);
 
-        // Remove empty lines to avoid runaway evaluation of following regex
-        // on badly coded websites
+        // Remove empty lines to avoid runaway evaluation of following regex on badly coded websites
         $re = '/^[ \t]*[\r\n]+/m';
-        $html = preg_replace($re, '', $html);
+        $htmlCleaned = preg_replace($re, '', $html);
 
         // Remove empty nodes (except iframe)
         $re = '/<(?!iframe)([^>\s]+)[^>]*>(?:<br \/>|&nbsp;|&thinsp;|&ensp;|&emsp;|&#8201;|&#8194;|&#8195;|\s)*<\/\1>/m';
-        $html = preg_replace($re, '', (string) $html);
+        $html = preg_replace($re, '', (string) $htmlCleaned);
+
+        // in case html string is too long, keep the html uncleaned to avoid empty html
+        if (\PREG_JIT_STACKLIMIT_ERROR === preg_last_error()) {
+            $html = $htmlCleaned;
+            $this->logger->debug('Failed to properly clean HTML from empty nodes');
+        }
 
         $this->logger->debug('HTML after regex empty nodes stripping', ['html' => $html]);
 
@@ -497,11 +502,11 @@ class Graby
         // everything should be converted, rebuild the final url
         $url = (string) $uri;
 
-        if (false === filter_var($url, FILTER_VALIDATE_URL)) {
+        if (false === filter_var($url, \FILTER_VALIDATE_URL)) {
             throw new \InvalidArgumentException(sprintf('Url "%s" is not valid.', $url));
         }
 
-        $url = filter_var($url, FILTER_SANITIZE_URL);
+        $url = filter_var($url, \FILTER_SANITIZE_URL);
 
         if (false === $url) {
             throw new \InvalidArgumentException(sprintf('Sanitizing url "%s" failed.', $url));
@@ -741,7 +746,19 @@ class Graby
         // check it's not what we have already!
         if (false !== $singlePageUrl && $singlePageUrl !== $url) {
             // it's not, so let's try to fetch it...
-            $response = $this->httpClient->fetch($singlePageUrl, false, $siteConfig->http_header);
+            $headers = $siteConfig->http_header;
+
+            $sourceUrl = parse_url($url);
+            $targetUrl = parse_url($singlePageUrl);
+            if (\is_array($sourceUrl)
+                && \is_array($targetUrl)
+                && \array_key_exists('host', $sourceUrl)
+                && \array_key_exists('host', $targetUrl)
+                && $sourceUrl['host'] !== $targetUrl['host']) {
+                $targetSiteConfig = $this->configBuilder->buildForHost($targetUrl['host']);
+                $headers = $targetSiteConfig->http_header;
+            }
+            $response = $this->httpClient->fetch($singlePageUrl, false, $headers);
 
             if ($response['status'] < 300) {
                 $this->logger->info('Single page content found with url', ['url' => $singlePageUrl]);
@@ -819,21 +836,20 @@ class Graby
             return false;
         }
 
-        if (preg_match('!^https?://!i', $url)) {
-            // already absolute
-            return $url;
+        $url = new Uri($url);
+
+        if (Uri::isAbsolute($url)) {
+            return (string) $url;
         }
 
         $base = new Uri($base);
-        // ensure the base has no path at all (to avoid // between host & path)
-        $base = str_replace($base->getPath(), '', (string) $base);
 
-        // in case the url has no scheme & host
-        if (0 === \strlen($base)) {
+        // in case the url has no host
+        if (0 === \strlen($base->getAuthority())) {
             return false;
         }
 
-        return (string) UriResolver::resolve(new Uri($base), new Uri($url));
+        return (string) UriResolver::resolve($base, $url);
     }
 
     /**
@@ -894,7 +910,7 @@ class Graby
         // remove strange things
         $html = str_replace('</[>', '', $html);
 
-        if (empty($contentType) || !preg_match_all('/([^;]+)(?:;\s*charset=["\']?([^;"\'\n]*))?/im', $contentType, $match, PREG_SET_ORDER)) {
+        if (empty($contentType) || !preg_match_all('/([^;]+)(?:;\s*charset=["\']?([^;"\'\n]*))?/im', $contentType, $match, \PREG_SET_ORDER)) {
             // error parsing the response
             $this->logger->info('Could not find Content-Type header in HTTP response', ['headers' => $headers]);
         } else {

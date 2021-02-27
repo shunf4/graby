@@ -207,7 +207,7 @@ class ContentExtractor
         $this->readability = $this->getReadability($html, $url, $parser, $this->siteConfig->tidy() && $smartTidy);
         $tidied = $this->readability->tidied;
 
-        $this->logger->info('Body size after Readability: {length}', ['length' => \strlen($this->readability->dom->saveXML())]);
+        $this->logger->info('Body size after Readability: {length}', ['length' => \strlen((string) $this->readability->dom->saveXML())]);
         $this->logger->debug('Body after Readability', ['dom_saveXML' => $this->readability->dom->saveXML()]);
 
         // we use xpath to find elements in the given HTML document
@@ -369,7 +369,7 @@ class ContentExtractor
 
         // try to get body
         foreach ($this->siteConfig->body as $pattern) {
-            $this->logger->info('Trying {pattern} for body (content length: {content_length})', ['pattern' => $pattern, 'content_length' => \strlen($this->readability->dom->saveXML())]);
+            $this->logger->info('Trying {pattern} for body (content length: {content_length})', ['pattern' => $pattern, 'content_length' => \strlen((string) $this->readability->dom->saveXML())]);
 
             $res = $this->extractBody(
                 true,
@@ -409,7 +409,7 @@ class ContentExtractor
             // check for hentry
             $elems = $this->xpath->query("//*[contains(concat(' ',normalize-space(@class),' '),' hentry ')]", $this->readability->dom);
 
-            if ($this->hasElements($elems)) {
+            if (false !== $elems && $this->hasElements($elems)) {
                 $this->logger->info('hNews: found hentry');
                 $hentry = $elems->item(0);
 
@@ -534,7 +534,7 @@ class ContentExtractor
             $this->logger->info('Detecting body');
             $this->body = $this->readability->getContent();
 
-            if (1 === $this->body->childNodes->length && XML_ELEMENT_NODE === $this->body->firstChild->nodeType) {
+            if (1 === $this->body->childNodes->length && \XML_ELEMENT_NODE === $this->body->firstChild->nodeType) {
                 $this->body = $this->body->firstChild;
             }
 
@@ -551,11 +551,11 @@ class ContentExtractor
             if (isset($this->title) && '' !== $this->title && null !== $this->body->firstChild) {
                 $firstChild = $this->body->firstChild;
 
-                while (null !== $firstChild->nextSibling && $firstChild->nodeType && (XML_ELEMENT_NODE !== $firstChild->nodeType)) {
+                while (null !== $firstChild->nextSibling && $firstChild->nodeType && (\XML_ELEMENT_NODE !== $firstChild->nodeType)) {
                     $firstChild = $firstChild->nextSibling;
                 }
 
-                if (XML_ELEMENT_NODE === $firstChild->nodeType
+                if (\XML_ELEMENT_NODE === $firstChild->nodeType
                     && \in_array(strtolower($firstChild->tagName), ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'], true)
                     && (strtolower(trim($firstChild->textContent)) === strtolower(trim($this->title)))) {
                     $this->body->removeChild($firstChild);
@@ -607,16 +607,23 @@ class ContentExtractor
                     continue;
                 }
 
-                $src = null;
+                $attributes = [];
                 foreach ($this->config['src_lazy_load_attributes'] as $attribute) {
                     if ($e->hasAttribute($attribute)) {
-                        $src = $e->getAttribute($attribute);
+                        $key = 'src';
+                        if ('data-srcset' === $attribute) {
+                            $key = 'srcset';
+                        }
+                        $attributes[$key] = $e->getAttribute($attribute);
                         $e->removeAttribute($attribute);
                     }
                 }
 
-                if (null !== $src) {
-                    $e->setAttribute('src', $src);
+                foreach (['src', 'srcset'] as $attr) {
+                    if (\array_key_exists($attr, $attributes)
+                        && null !== $attributes[$attr]) {
+                        $e->setAttribute($attr, $attributes[$attr]);
+                    }
                 }
             }
 
@@ -697,7 +704,7 @@ class ContentExtractor
      */
     public function validateDate($date)
     {
-        $parseDate = date_parse($date);
+        $parseDate = (array) date_parse($date);
 
         // If no year has been found during date_parse, we nuke the whole value
         // because the date is invalid
@@ -728,21 +735,28 @@ class ContentExtractor
     /**
      * Check if given node list exists and has length more than 0.
      *
+     * @param \DOMNodeList|false $elems Not force typed because it can also be false
+     *
      * @return bool
      */
-    private function hasElements(\DOMNodeList $elems)
+    private function hasElements($elems = false)
     {
+        if (false === $elems) {
+            return false;
+        }
+
         return $elems->length > 0;
     }
 
     /**
      * Remove elements.
      *
-     * @param string $logMessage
+     * @param \DOMNodeList|false $elems      Not force typed because it can also be false
+     * @param string             $logMessage
      */
-    private function removeElements(\DOMNodeList $elems, $logMessage = null)
+    private function removeElements($elems = false, $logMessage = null)
     {
-        if (false === $this->hasElements($elems)) {
+        if (false === $elems || false === $this->hasElements($elems)) {
             return;
         }
 
@@ -1185,22 +1199,28 @@ class ContentExtractor
         $metas = $xpath->query('//*/meta[starts-with(@property, \'og:\')]');
 
         $ogMetas = [];
-        foreach ($metas as $meta) {
-            $property = str_replace(':', '_', (string) $meta->getAttribute('property'));
+        if (false !== $metas) {
+            foreach ($metas as $meta) {
+                if (!$meta instanceof \DOMElement) {
+                    continue;
+                }
 
-            if (\in_array($property, ['og_image', 'og_image_url', 'og_image_secure_url'], true)) {
-                // avoid image data:uri to avoid sending too much data
-                // also, take the first og:image which is usually the best one
-                if (0 === stripos($meta->getAttribute('content'), 'data:image') || !empty($ogMetas[$property])) {
+                $property = str_replace(':', '_', (string) $meta->getAttribute('property'));
+
+                if (\in_array($property, ['og_image', 'og_image_url', 'og_image_secure_url'], true)) {
+                    // avoid image data:uri to avoid sending too much data
+                    // also, take the first og:image which is usually the best one
+                    if (0 === stripos($meta->getAttribute('content'), 'data:image') || !empty($ogMetas[$property])) {
+                        continue;
+                    }
+
+                    $ogMetas[$property] = $meta->getAttribute('content');
+
                     continue;
                 }
 
                 $ogMetas[$property] = $meta->getAttribute('content');
-
-                continue;
             }
-
-            $ogMetas[$property] = $meta->getAttribute('content');
         }
 
         $this->logger->info('Opengraph "og:" data: {ogData}', ['ogData' => $ogMetas]);
@@ -1230,8 +1250,14 @@ class ContentExtractor
         $metas = $xpath->query('//*/meta[starts-with(@property, \'article:\')]');
 
         $articleMetas = [];
-        foreach ($metas as $meta) {
-            $articleMetas[str_replace(':', '_', (string) $meta->getAttribute('property'))] = $meta->getAttribute('content');
+        if (false !== $metas) {
+            foreach ($metas as $meta) {
+                if (!$meta instanceof \DOMElement) {
+                    continue;
+                }
+
+                $articleMetas[str_replace(':', '_', (string) $meta->getAttribute('property'))] = $meta->getAttribute('content');
+            }
         }
 
         $this->logger->info('Opengraph "article:" data: {ogData}', ['ogData' => $articleMetas]);
@@ -1273,6 +1299,10 @@ class ContentExtractor
     private function extractJsonLdInformation(\DOMXPath $xpath)
     {
         $scripts = $xpath->query('//*/script[@type="application/ld+json"]');
+
+        if (false === $scripts) {
+            return null;
+        }
 
         $ignoreNames = [];
         $candidateNames = [];

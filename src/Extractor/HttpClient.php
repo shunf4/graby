@@ -14,7 +14,7 @@ use Http\Client\Common\Plugin\RedirectPlugin;
 use Http\Client\Common\PluginClient;
 use Http\Client\Exception\TransferException;
 use Http\Client\HttpClient as Client;
-use Http\Discovery\MessageFactoryDiscovery;
+use Http\Discovery\Psr17FactoryDiscovery;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
@@ -105,7 +105,7 @@ class HttpClient
                     'max_restarts' => $this->config['max_redirect'],
                 ]
             ),
-            MessageFactoryDiscovery::find()
+            Psr17FactoryDiscovery::findRequestFactory()
         );
     }
 
@@ -209,6 +209,11 @@ class HttpClient
 
         $headers = $this->formatHeaders($response);
 
+        // if response give us a refresh header it means we need to follow the given url
+        if (!empty($headers['refresh']) && 1 === preg_match('![0-9];\s*url=["\']?([^"\'>]+)!i', $headers['refresh'], $match)) {
+            return $this->fetch($match[1], true, $httpHeader);
+        }
+
         // the response content-type did not match our 'header only' types,
         // but we'd issues a HEAD request because we assumed it would. So
         // let's queue a proper GET request for this item...
@@ -293,14 +298,14 @@ class HttpClient
 
         // convert fragment to actual query parameters
         if ($fragmentPos = strpos($url, '#!')) {
-            $fragment = parse_url($url, PHP_URL_FRAGMENT);
+            $fragment = parse_url($url, \PHP_URL_FRAGMENT);
             // strip '!'
             $fragment = substr((string) $fragment, 1);
             $query = ['_escaped_fragment_' => $fragment];
 
             // url without fragment
             $url = substr($url, 0, $fragmentPos);
-            $url .= parse_url($url, PHP_URL_QUERY) ? '&' : '?';
+            $url .= parse_url($url, \PHP_URL_QUERY) ? '&' : '?';
             // needed for some sites
             $url .= str_replace('%2F', '/', http_build_query($query));
         }
@@ -323,7 +328,7 @@ class HttpClient
      */
     private function possibleUnsupportedType($url)
     {
-        $ext = strtolower(trim(pathinfo($url, PATHINFO_EXTENSION)));
+        $ext = strtolower(trim(pathinfo($url, \PATHINFO_EXTENSION)));
 
         if (!$ext) {
             return false;
@@ -352,7 +357,7 @@ class HttpClient
             return $httpHeader['user-agent'];
         }
 
-        $host = parse_url($url, PHP_URL_HOST);
+        $host = parse_url($url, \PHP_URL_HOST);
 
         if ('www.' === strtolower(substr((string) $host, 0, 4))) {
             $host = substr((string) $host, 4);
@@ -562,7 +567,7 @@ class HttpClient
         $query = ['_escaped_fragment_' => ''];
 
         // add fragment to url
-        $url .= parse_url($url, PHP_URL_QUERY) ? '&' : '?';
+        $url .= parse_url($url, \PHP_URL_QUERY) ? '&' : '?';
         // needed for some sites
         $url .= str_replace('%2F', '/', http_build_query($query));
 

@@ -1,56 +1,33 @@
+dist: xenial
+os: linux
 language: php
 
+# avoid double Travis build when the PR is created on upstream
+if: |
+    type = pull_request OR \
+    branch = master
+
 php:
-    - 7.1
-    - 7.2
-    - 7.3
-    - nightly
+    - 8.0
 
-# run build against nightly but allow them to fail
-matrix:
-    fast_finish: true
+jobs:
     allow_failures:
-        - php: nightly
-    # only one build will send the coverage, this'll speed up other one
-    include:
-        - php: 7.2
-          env: PHPUNIT_FLAGS="--coverage-clover build/logs/clover.xml" CS_FIXER=run
-        - php: 7.2
-          env: GUZZLE5=run
-        - php: 7.2
-          env: CURL=run
+        - php: 8.0
 
-# cache vendor dirs
 cache:
     directories:
-        - vendor
-        - $HOME/.composer/cache
+        - $HOME/.composer/cache/files
 
 before_install:
-    - if [ -n "$GH_TOKEN" ]; then composer config github-oauth.github.com ${GH_TOKEN}; fi;
-
-    # because php-coveralls require Guzzle 6
-    - if [ "$GUZZLE5" = "run" ]; then composer remove php-coveralls/php-coveralls php-http/guzzle6-adapter --dev -n ; fi;
-    - if [ "$GUZZLE5" = "run" ]; then composer require php-http/guzzle5-adapter '^2.0' --dev -n ; fi;
-
-    - if [ "$CURL" = "run" ]; then composer remove php-http/guzzle6-adapter --dev -n ; fi;
-    - if [ "$CURL" = "run" ]; then composer require php-http/curl-client '2.x-dev' --dev -n ; fi;
-    - if [ "$CURL" = "run" ]; then composer require zendframework/zend-diactoros --dev -n ; fi;
+    - composer config github-oauth.github.com ${GH_TOKEN}
 
 install:
-    - composer up --no-interaction --prefer-dist -o
+    - composer remove friendsofphp/php-cs-fixer --dev --no-interaction
+    - composer update --prefer-dist --no-progress -o
 
 before_script:
     - echo 'date.timezone = "Europe/Paris"' >> ~/.phpenv/versions/$(phpenv version-name)/etc/conf.d/travis.ini
 
 script:
     - mkdir -p build/logs
-    - php vendor/bin/simple-phpunit -v $PHPUNIT_FLAGS
-    - if [ "$CS_FIXER" = "run" ]; then php vendor/bin/php-cs-fixer fix --verbose --dry-run ; fi;
-    - if [ "$CS_FIXER" = "run" ]; then php vendor/bin/phpstan analyse src tests --no-progress --level 7 ; fi;
-
-after_success:
-    - |
-        if [[ "$PHPUNIT_FLAGS" != "" ]]; then
-            travis_retry php vendor/bin/php-coveralls -v -x build/logs/clover.xml
-        fi
+    - php vendor/bin/simple-phpunit -v
