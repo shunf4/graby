@@ -1,0 +1,2 @@
+fq composer config repositories.foo vcs https://github.com/shunf4/simplepie
+
