@@ -536,10 +536,14 @@ class ContentExtractor
 
             if (1 === $this->body->childNodes->length && \XML_ELEMENT_NODE === $this->body->firstChild->nodeType) {
                 $this->body = $this->body->firstChild;
-            }
+	    }
+
+	    if ($this->body->ownerDocument === null) {
+                unset($this->body);
+	    }
 
             // prune (clean up elements that may not be content)
-            if ($this->siteConfig->prune()) {
+	    if (isset($this->body) && $this->siteConfig->prune()) {
                 $this->logger->info('Pruning content');
                 $this->readability->prepArticle($this->body);
             }
